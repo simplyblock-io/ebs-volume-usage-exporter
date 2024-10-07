@@ -1,0 +1,134 @@
+apiVersion: v1
+data:
+  metrics_aggregation.py: "import csv\nimport time\nimport os\nimport argparse\nimport
+    logging\nimport threading\nimport json\nfrom kubernetes import client, config\nimport
+    boto3\nfrom datetime import datetime, timedelta, timezone\n\nlogging.basicConfig(level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s')\nlog = logging.getLogger(__name__)\n\nconfig.load_incluster_config()\n\nv1
+    = client.CoreV1Api()\n\npv_info = []\nwrite_lock = threading.Lock()\n\naws_access_key_id
+    = os.getenv('AWS_ACCESS_KEY_ID')\naws_secret_access_key = os.getenv('AWS_SECRET_ACCESS_KEY')\naws_region
+    = os.getenv('AWS_REGION', 'us-east-1')\n\ncloudwatch = boto3.client(\n    'cloudwatch',\n
+    \   aws_access_key_id=aws_access_key_id,\n    aws_secret_access_key=aws_secret_access_key,\n
+    \   region_name=aws_region\n)\n\ns3_client = boto3.client(\n    's3',\n    aws_access_key_id=aws_access_key_id,\n
+    \   aws_secret_access_key=aws_secret_access_key,\n    region_name=aws_region\n)\n\nec2_client
+    = boto3.client(\n    'ec2',\n    aws_access_key_id=aws_access_key_id,\n    aws_secret_access_key=aws_secret_access_key,\n
+    \   region_name=aws_region\n)\n\ndef get_persistent_volumes():\n    log.info(\"Fetching
+    Persistent Volumes information\")\n    global pv_info\n    try:\n        pvs =
+    v1.list_persistent_volume().items\n    except client.exceptions.ApiException as
+    e:\n        log.error(f\"Error fetching PVs: {e}\")\n        return\n\n    for
+    pv in pvs:\n        if pv.spec.aws_elastic_block_store:\n            volume_id
+    = pv.spec.aws_elastic_block_store.volume_id\n        elif pv.spec.csi and pv.spec.csi.volume_handle:\n
+    \           volume_id = pv.spec.csi.volume_handle\n        else:\n            log.warning(f\"Volume
+    ID not found for PV: {pv.metadata.name}. Skipping.\")\n            continue\n\n
+    \       pv_info.append({\n            \"name\": pv.metadata.name,\n            \"size\":
+    pv.spec.capacity['storage'],\n            \"claim_name\": pv.spec.claim_ref.name
+    if pv.spec.claim_ref else \"N/A\",\n            \"pv_ebs_volume_id\": volume_id\n
+    \       })\n        log.info(f\"Collected PV: {pv.metadata.name}, Volume ID: {volume_id}\")\n
+    \       \n        \ndef get_volume_iops_limit(volume_id):\n    \"\"\"\n    Retrieves
+    the provisioned IOPS limit for the given EBS volume.\n    \"\"\"\n    try:\n        response
+    = ec2_client.describe_volumes(VolumeIds=[volume_id])\n        if response['Volumes']:\n
+    \           volume = response['Volumes'][0]\n            return volume.get('Iops')\n
+    \   except Exception as e:\n        log.error(f\"Failed to retrieve IOPS limit
+    for volume {volume_id}: {e}\")\n        return None\n\n\ndef get_ebs_metrics(start_time,
+    end_time, period=300):\n    all_metrics = []\n    for pv in pv_info:\n        volume_id
+    = pv['pv_ebs_volume_id']\n        if not volume_id:\n            log.error(f\"Volume
+    ID not found for PV: {pv['name']}\")\n            continue\n        log.info(f\"Fetching
+    EBS metrics for volume: {volume_id}\")\n        metric_data = get_volume_metrics(volume_id,
+    start_time, end_time, period)\n\n        if not metric_data or not any(metric_data):\n
+    \           log.warning(f\"No metric data found for volume: {volume_id}. Skipping.\")\n
+    \           continue\n\n        log.info(f\"Received {len(metric_data)} data points\")\n\n
+    \       read_ops = metric_data[0]['Values'] \n        write_ops = metric_data[1]['Values']\n
+    \       read_bytes = metric_data[2]['Values']\n        write_bytes = metric_data[3]['Values']\n\n
+    \       read_io_avg = round(sum(read_ops) / len(read_ops), 2) if read_ops else
+    0\n        read_io_max = round(max(read_ops), 2) if read_ops else 0\n        write_io_avg
+    = round(sum(write_ops) / len(write_ops), 2) if write_ops else 0\n        write_io_max
+    = round(max(write_ops), 2) if write_ops else 0\n\n        read_mbps_avg = round(sum(read_bytes)/len(read_bytes)/(1024*1024)/period,2)
+    if read_bytes else 0\n        read_mbps_max = round(max(read_bytes)/(1024*1024)/period,
+    2) if read_bytes else 0\n        write_mbps_avg = round(sum(write_bytes)/len(write_bytes)/(1024*1024)/period,2)
+    if write_bytes else 0\n        write_mbps_max = round(max(write_bytes)/(1024*1024)/period,
+    2) if write_bytes else 0\n        \n        total_iops_per_second = read_io_avg/300
+    + write_io_avg/300\n        provisioned_iops = get_volume_iops_limit(volume_id)\n
+    \       \n        percent_disk_utilized = round((total_iops_per_second / provisioned_iops)
+    * 100, 2)\n\n\n\n        snapshots = get_volume_snapshots(volume_id)\n        snapshots_str
+    = ', '.join(snapshots)\n\n        metrics_entry = {\n            'pv_name': pv['name'],\n
+    \           'pv_size': pv['size'],\n            'percent_disk_utilized': percent_disk_utilized,\n
+    \           'ebs_volume_id': volume_id,\n            'read_io_avg': read_io_avg,\n
+    \           'read_io_max': read_io_max,\n            'write_io_avg': write_io_avg,\n
+    \           'write_io_max': write_io_max,\n            'read_mbps_avg': read_mbps_avg,\n
+    \           'read_mbps_max': read_mbps_max,\n            'write_mbps_avg': write_mbps_avg,\n
+    \           'write_mbps_max': write_mbps_max,\n            'snapshots': snapshots_str,\n
+    \           'start_time': start_time.isoformat(),\n            'end_time': end_time.isoformat()
+    \ \n        }\n        all_metrics.append(metrics_entry)\n\n        log.info(f\"Metrics
+    for PV {pv['name']} - Volume ID: {volume_id}, Read I/O Avg: {read_io_avg}, Read
+    I/O Max: {read_io_max}, \"\n                 f\"Write I/O Avg: {write_io_avg},
+    Write I/O Max: {write_io_max}, \"\n                 f\"Read MB Avg: {read_mbps_avg}
+    MB/s, Read MB Max: {read_mbps_max} MB/s, \"\n                 f\"Write MB Avg:
+    {write_mbps_avg} MB/s, Write MB Max: {write_mbps_max} MB/s, \"\n                 f\"Snapshots:
+    {snapshots_str}, Start Time: {start_time.isoformat()}, End Time: {end_time.isoformat()}\")\n\n
+    \       upload_raw_response_to_s3(metric_data, volume_id)\n\n    return all_metrics\n\ndef
+    get_volume_metrics(volume_id, start_time, end_time, period):\n    response = cloudwatch.get_metric_data(\n
+    \       MetricDataQueries=[\n            {\n                'Id': 'm1',\n                'MetricStat':
+    {\n                    'Metric': {\n                        'Namespace': 'AWS/EBS',\n
+    \                       'MetricName': 'VolumeReadOps',\n                        'Dimensions':
+    [{'Name': 'VolumeId', 'Value': volume_id}]\n                    },\n                    'Period':
+    period,\n                    'Stat': 'Average',\n                    'Unit': 'Count'\n
+    \               },\n                'ReturnData': True\n            },\n            {\n
+    \               'Id': 'm2',\n                'MetricStat': {\n                    'Metric':
+    {\n                        'Namespace': 'AWS/EBS',\n                        'MetricName':
+    'VolumeWriteOps',\n                        'Dimensions': [{'Name': 'VolumeId',
+    'Value': volume_id}]\n                    },\n                    'Period': period,\n
+    \                   'Stat': 'Average',\n                    'Unit': 'Count'\n
+    \               },\n                'ReturnData': True\n            },\n            {\n
+    \               'Id': 'm3',\n                'MetricStat': {\n                    'Metric':
+    {\n                        'Namespace': 'AWS/EBS',\n                        'MetricName':
+    'VolumeReadBytes',\n                        'Dimensions': [{'Name': 'VolumeId',
+    'Value': volume_id}]\n                    },\n                    'Period': period,\n
+    \                   'Stat': 'Average',\n                    'Unit': 'Bytes'\n
+    \               },\n                'ReturnData': True\n            },\n            {\n
+    \               'Id': 'm4',\n                'MetricStat': {\n                    'Metric':
+    {\n                        'Namespace': 'AWS/EBS',\n                        'MetricName':
+    'VolumeWriteBytes',\n                        'Dimensions': [{'Name': 'VolumeId',
+    'Value': volume_id}]\n                    },\n                    'Period': period,\n
+    \                   'Stat': 'Average',\n                    'Unit': 'Bytes'\n
+    \               },\n                'ReturnData': True\n            },\n        ],\n
+    \       StartTime=start_time,\n        EndTime=end_time,\n        ScanBy='TimestampDescending'\n
+    \   )\n    return response['MetricDataResults']\n\ndef get_volume_snapshots(volume_id):\n
+    \   snapshots = []\n    try:\n        response = ec2_client.describe_snapshots(\n
+    \           Filters=[{'Name': 'volume-id', 'Values': [volume_id]}],\n            OwnerIds=['self']\n
+    \       )\n        for snapshot in response['Snapshots']:\n            snapshots.append(snapshot['SnapshotId'])\n
+    \   except Exception as e:\n        log.error(f\"Failed to retrieve snapshots
+    for volume {volume_id}: {e}\")\n\n    return snapshots\n\ndef upload_raw_response_to_s3(response,
+    volume_id):\n    response_file = f'response_{volume_id}.json'\n    try:\n        with
+    open(response_file, 'w') as f:\n            json.dump(response, f, indent=4, default=str)\n
+    \       s3_client.upload_file(response_file, os.getenv(\"S3_BUCKET_NAME\"), f'response/{response_file}')\n
+    \       log.info(f\"Uploaded raw response to S3 as {response_file}\")\n        os.remove(response_file)\n
+    \   except Exception as e:\n        log.error(f\"Failed to upload raw response
+    for volume {volume_id}: {e}\")\n\n\n\n\ndef write_metrics_to_s3(metric_data, bucket_name):\n
+    \   if not metric_data:\n        log.warning(\"No metric data to write to S3.\")\n
+    \       return\n\n    temp_file = 'temp_metrics.csv'\n    with open(temp_file,
+    'w', newline='') as csvfile:\n        writer = csv.DictWriter(csvfile, fieldnames=metric_data[0].keys())\n
+    \       writer.writeheader()\n        writer.writerows(metric_data)\n\n    log.info(f\"Metrics
+    written to temporary file {temp_file}\")\n\n    upload_to_s3(temp_file, bucket_name,
+    'datafile.csv')\n\n    os.remove(temp_file)\n    \n    \n\n\ndef upload_to_s3(file_name,
+    bucket, object_name=None):\n    if object_name is None:\n        object_name =
+    file_name\n\n    try:\n        s3_client.upload_file(file_name, bucket, object_name)\n
+    \       log.info(f\"Uploaded {file_name} to S3 bucket {bucket}/{object_name}\")\n
+    \   except Exception as e:\n        log.error(f\"Failed to upload {file_name}
+    to S3: {e}\")\n\ndef main():\n    parser = argparse.ArgumentParser(description=\"Collect
+    pv iostats data.\")\n    \n    time_duration = os.getenv(\"TIME_DURATION\")\n
+    \   \n    if not time_duration:\n        log.error(\"TIME_DURATION environment
+    variable is not set.\")\n        return\n\n    try:\n        time_duration = int(time_duration)\n
+    \   except ValueError:\n        log.error(\"Invalid TIME_DURATION environment
+    variable. Must be an integer.\")\n        return\n\n    bucket_name = os.getenv(\"S3_BUCKET_NAME\")\n
+    \   if not bucket_name:\n        log.error(\"S3_BUCKET_NAME environment variable
+    is not set.\")\n        return\n\n    log.info(f\"Using S3 bucket: {bucket_name}\")\n\n
+    \   end_time = datetime.now(timezone.utc)\n    start_time = end_time - timedelta(days=time_duration)\n\n
+    \   log.info(f\"Script started with arguments - Time: {time_duration}s, Bucket:
+    {bucket_name}, Start Time: {start_time.isoformat()}, End Time: {end_time.isoformat()}\")\n\n
+    \   get_persistent_volumes()\n\n    if not pv_info:\n        log.error(\"No PV
+    information available. Exiting.\")\n        return\n\n    metrics_data = get_ebs_metrics(start_time,
+    end_time)\n    write_metrics_to_s3(metrics_data, bucket_name)\n\n    log.info(\"Script
+    execution completed.\")\n\nif __name__ == \"__main__\":\n    main()\n"
+kind: ConfigMap
+metadata:
+  creationTimestamp: null
+  name: script-config-map

@@ -1,0 +1,52 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Chart.Name}}
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      volumes:
+          - name: script-cm-volume
+            configMap:
+              name: script-config-map
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: [ "/bin/sh", "-c" ]
+          args: [ "pip3 install kubernetes; pip3 install boto3; python3 /mnt/metrics_aggregation.py -o datafile.csv" ]
+          volumeMounts:
+          - name: script-cm-volume
+            mountPath: /mnt/metrics_aggregation.py
+            subPath: metrics_aggregation.py
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          env:
+            {{- range $key, $value := .Values.scriptConfig }}
+            - name: {{ $key }}
+              value: {{ quote $value }}
+            {{- end }}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.scriptConfig.AWS_SECRET_REF }}
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.scriptConfig.AWS_SECRET_REF }}
+                  key: AWS_ACCESS_KEY_ID
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

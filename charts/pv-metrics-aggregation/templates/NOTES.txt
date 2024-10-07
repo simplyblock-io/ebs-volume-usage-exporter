@@ -1,0 +1,1 @@
+Get the csv file in the root of the S3 bucket: {{ .Values.scriptConfig.S3_BUCKET_NAME }}/datafile.csv
