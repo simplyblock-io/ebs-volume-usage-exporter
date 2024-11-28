@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: pvc-consumer-pod
+  name: pvc-consumer-pod
+spec:
+  containers:
+  - image: alpine
+    name: pvc-consumer-pod
+    command: ["sh", "-c", "echo 'Hello from PVC' > /data/hello.txt && sleep 4d"]
+    volumeMounts:
+    - mountPath: /data
+      name: pvc-storage
+    resources: {}
+  volumes:
+  - name: pvc-storage
+    persistentVolumeClaim:
+      claimName: pvc-k8
+  dnsPolicy: ClusterFirst
+  restartPolicy:

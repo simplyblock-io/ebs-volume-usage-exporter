@@ -5,7 +5,7 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: storage-clusty-role
+  name: storage-cluster-role
 subjects:
 - kind: ServiceAccount
   name: metric-aggregation-sa

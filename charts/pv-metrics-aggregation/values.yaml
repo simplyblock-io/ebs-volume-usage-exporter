@@ -5,12 +5,12 @@
 
 scriptConfig:
   AWS_SECRET_REF: aws-secret
-  AWS_REGION: us-east-1
+  AWS_REGION: us-east-2
   S3_BUCKET_NAME: metrics-aggregation
   TIME_DURATION: 1
 
 serviceAccount:
-  name: "full-access-sa"
+  name: "metric-aggregation-sa"
 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious

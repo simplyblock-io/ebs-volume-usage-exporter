@@ -21,7 +21,7 @@ write_lock = threading.Lock()
 
 aws_access_key_id = os.getenv('AWS_ACCESS_KEY_ID')
 aws_secret_access_key = os.getenv('AWS_SECRET_ACCESS_KEY')
-aws_region = os.getenv('AWS_REGION', 'us-east-1')
+aws_region = os.getenv('AWS_REGION', 'us-east-2')
 
 cloudwatch = boto3.client(
     'cloudwatch',
@@ -83,6 +83,20 @@ def get_volume_iops_limit(volume_id):
         return None
 
 
+def get_api_data(volume_id):
+    volume = ec2_client.describe_volumes(VolumeIds=[volume_id])['Volumes'][0]
+    return {
+        "volume_id": volume['VolumeId'],
+        "ebs_type": volume['VolumeType'],
+        "ebs_size_gb": volume['Size'],
+        "ebs_provisioned_iops": volume.get('Iops', "N/A"),
+        "ebs_provisioned_throughput": volume.get('Throughput', "N/A")
+    }
+
+
+
+
+
 def get_ebs_metrics(start_time, end_time, period=300):
     all_metrics = []
     for pv in pv_info:
@@ -93,6 +107,10 @@ def get_ebs_metrics(start_time, end_time, period=300):
         log.info(f"Fetching EBS metrics for volume: {volume_id}")
         metric_data = get_volume_metrics(volume_id, start_time, end_time, period)
 
+        aws_api_data = get_api_data(volume_id)
+        
+        
+        
         if not metric_data or not any(metric_data):
             log.warning(f"No metric data found for volume: {volume_id}. Skipping.")
             continue
@@ -117,7 +135,7 @@ def get_ebs_metrics(start_time, end_time, period=300):
         total_iops_per_second = read_io_avg/300 + write_io_avg/300
         provisioned_iops = get_volume_iops_limit(volume_id)
         
-        percent_disk_utilized = round((total_iops_per_second / provisioned_iops) * 100, 2)
+        # percent_disk_utilized = round((total_iops_per_second / provisioned_iops) * 100, 2)
 
 
 
@@ -127,8 +145,12 @@ def get_ebs_metrics(start_time, end_time, period=300):
         metrics_entry = {
             'pv_name': pv['name'],
             'pv_size': pv['size'],
-            'percent_disk_utilized': percent_disk_utilized,
+            # 'percent_disk_utilized': percent_disk_utilized,
             'ebs_volume_id': volume_id,
+            'ebs_volume_type': aws_api_data['ebs_type'],
+            'ebs_size_gb': aws_api_data['ebs_size_gb'],
+            'ebs_provisioned_iops': aws_api_data['ebs_provisioned_iops'],
+            'ebs_provisioned_throughput': aws_api_data['ebs_provisioned_throughput'],
             'read_io_avg': read_io_avg,
             'read_io_max': read_io_max,
             'write_io_avg': write_io_avg,
