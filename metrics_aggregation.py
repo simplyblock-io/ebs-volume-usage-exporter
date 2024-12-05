@@ -66,7 +66,8 @@ def get_persistent_volumes():
             "name": pv.metadata.name,
             "size": pv.spec.capacity['storage'],
             "claim_name": pv.spec.claim_ref.name if pv.spec.claim_ref else "N/A",
-            "pv_ebs_volume_id": volume_id
+            "pv_ebs_volume_id": volume_id,
+            "namespace":pv.spec.claim_ref.namespace
         })
         log.info(f"Collected PV: {pv.metadata.name}, Volume ID: {volume_id}")
         
@@ -149,6 +150,7 @@ def get_ebs_metrics(start_time, end_time, period=300):
             'ebs_volume_id': volume_id,
             'ebs_volume_type': aws_api_data['ebs_type'],
             'ebs_size_gb': aws_api_data['ebs_size_gb'],
+            'ebs_available_gb': pv['available_gb'],
             'ebs_provisioned_iops': aws_api_data['ebs_provisioned_iops'],
             'ebs_provisioned_throughput': aws_api_data['ebs_provisioned_throughput'],
             'read_io_avg': read_io_avg,
@@ -286,7 +288,38 @@ def write_metrics_to_s3(metric_data, bucket_name):
 
     os.remove(temp_file)
     
-    
+def get_pv_available_space():
+    log.info("Fetching available space for Persistent Volumes")
+    global pv_info
+
+    if not pv_info:
+        log.warning("No PV information available.")
+        return
+
+    try:
+        for pv in pv_info:
+            claim_name = pv.get("claim_name")
+            namespace = pv.get("namespace")
+            log.debug(f"Fetching PVC status for claim: {claim_name} in namespace: {namespace}")
+
+            response = v1.read_namespaced_persistent_volume_claim_status(claim_name, namespace)
+
+            if response.status.capacity and "storage" in response.status.capacity:
+                storage_capacity = response.status.capacity["storage"]
+                
+                available_bytes = int(storage_capacity.replace("Gi", "")) * 1024 ** 3 
+                available_gb = available_bytes / (1024 ** 3)
+
+                pv["available_gb"] = available_gb
+                log.info(f"PVC {claim_name} in namespace {namespace} has {available_gb} GB available.")
+            else:
+                log.warning(f"Storage capacity not found for PVC {claim_name}. Skipping.")
+
+    except Exception as e:
+        log.error(f"Error fetching available space for PVs: {e}")
+
+   
+
 
 
 def upload_to_s3(file_name, bucket, object_name=None):
@@ -327,10 +360,12 @@ def main():
     log.info(f"Script started with arguments - Time: {time_duration}s, Bucket: {bucket_name}, Start Time: {start_time.isoformat()}, End Time: {end_time.isoformat()}")
 
     get_persistent_volumes()
+    
 
     if not pv_info:
         log.error("No PV information available. Exiting.")
         return
+    get_pv_available_space()
 
     metrics_data = get_ebs_metrics(start_time, end_time)
     write_metrics_to_s3(metrics_data, bucket_name)

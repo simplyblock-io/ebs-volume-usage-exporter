@@ -1,0 +1,9 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: st1-storage-class
+provisioner: ebs.csi.aws.com
+parameters:
+  type: st1
+  fsType: ext4
+reclaimPolicy: Retain

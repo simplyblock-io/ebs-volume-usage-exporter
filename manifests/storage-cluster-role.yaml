@@ -4,8 +4,8 @@ metadata:
   name: storage-cluster-role
 rules:
 - apiGroups: [""]
-  resources: ["persistentvolumes", "persistentvolumeclaims"]
-  verbs: ["get", "list"]
+  resources: ["persistentvolumes", "persistentvolumeclaims","persistentvolumeclaims/status"]
+  verbs: ["get", "list","status"]
 
 - apiGroups: ["snapshot.storage.k8s.io"]
   resources: ["volumesnapshots"]

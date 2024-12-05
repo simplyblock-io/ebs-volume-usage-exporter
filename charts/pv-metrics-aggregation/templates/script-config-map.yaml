@@ -6,7 +6,7 @@ data:
     format='%(asctime)s - %(levelname)s - %(message)s')\nlog = logging.getLogger(__name__)\n\nconfig.load_incluster_config()\n\nv1
     = client.CoreV1Api()\n\npv_info = []\nwrite_lock = threading.Lock()\n\naws_access_key_id
     = os.getenv('AWS_ACCESS_KEY_ID')\naws_secret_access_key = os.getenv('AWS_SECRET_ACCESS_KEY')\naws_region
-    = os.getenv('AWS_REGION', 'us-east-1')\n\ncloudwatch = boto3.client(\n    'cloudwatch',\n
+    = os.getenv('AWS_REGION', 'us-east-2')\n\ncloudwatch = boto3.client(\n    'cloudwatch',\n
     \   aws_access_key_id=aws_access_key_id,\n    aws_secret_access_key=aws_secret_access_key,\n
     \   region_name=aws_region\n)\n\ns3_client = boto3.client(\n    's3',\n    aws_access_key_id=aws_access_key_id,\n
     \   aws_secret_access_key=aws_secret_access_key,\n    region_name=aws_region\n)\n\nec2_client
@@ -21,15 +21,15 @@ data:
     ID not found for PV: {pv.metadata.name}. Skipping.\")\n            continue\n\n
     \       pv_info.append({\n            \"name\": pv.metadata.name,\n            \"size\":
     pv.spec.capacity['storage'],\n            \"claim_name\": pv.spec.claim_ref.name
-    if pv.spec.claim_ref else \"N/A\",\n            \"pv_ebs_volume_id\": volume_id\n
-    \       })\n        log.info(f\"Collected PV: {pv.metadata.name}, Volume ID: {volume_id}\")\n
-    \       \n        \ndef get_volume_iops_limit(volume_id):\n    # Retrieves the
-    provisioned IOPS limit for the given EBS volume.\n    try:\n        response =
-    ec2_client.describe_volumes(VolumeIds=[volume_id])\n        if response['Volumes']:\n
-    \           volume = response['Volumes'][0]\n            return volume.get('Iops')\n
-    \   except Exception as e:\n        log.error(f\"Failed to retrieve IOPS limit
-    for volume {volume_id}: {e}\")\n        return None\n\n\ndef get_api_data(volume_id):\n
-    \   volume = ec2_client.describe_volumes(VolumeIds=[volume_id])['Volumes'][0]\n
+    if pv.spec.claim_ref else \"N/A\",\n            \"pv_ebs_volume_id\": volume_id,\n
+    \           \"namespace\":pv.spec.claim_ref.namespace\n        })\n        log.info(f\"Collected
+    PV: {pv.metadata.name}, Volume ID: {volume_id}\")\n        \n        \ndef get_volume_iops_limit(volume_id):\n
+    \   # Retrieves the provisioned IOPS limit for the given EBS volume.\n    try:\n
+    \       response = ec2_client.describe_volumes(VolumeIds=[volume_id])\n        if
+    response['Volumes']:\n            volume = response['Volumes'][0]\n            return
+    volume.get('Iops')\n    except Exception as e:\n        log.error(f\"Failed to
+    retrieve IOPS limit for volume {volume_id}: {e}\")\n        return None\n\n\ndef
+    get_api_data(volume_id):\n    volume = ec2_client.describe_volumes(VolumeIds=[volume_id])['Volumes'][0]\n
     \   return {\n        \"volume_id\": volume['VolumeId'],\n        \"ebs_type\":
     volume['VolumeType'],\n        \"ebs_size_gb\": volume['Size'],\n        \"ebs_provisioned_iops\":
     volume.get('Iops', \"N/A\"),\n        \"ebs_provisioned_throughput\": volume.get('Throughput',
@@ -58,20 +58,20 @@ data:
     = ', '.join(snapshots)\n\n        metrics_entry = {\n            'pv_name': pv['name'],\n
     \           'pv_size': pv['size'],\n            # 'percent_disk_utilized': percent_disk_utilized,\n
     \           'ebs_volume_id': volume_id,\n            'ebs_volume_type': aws_api_data['ebs_type'],\n
-    \           'ebs_size_gb': aws_api_data['ebs_size_gb'],\n            'ebs_provisioned_iops':
-    aws_api_data['ebs_provisioned_iops'],\n            'ebs_provisioned_throughput':
-    aws_api_data['ebs_provisioned_throughput'],\n            'read_io_avg': read_io_avg,\n
-    \           'read_io_max': read_io_max,\n            'write_io_avg': write_io_avg,\n
-    \           'write_io_max': write_io_max,\n            'read_mbps_avg': read_mbps_avg,\n
-    \           'read_mbps_max': read_mbps_max,\n            'write_mbps_avg': write_mbps_avg,\n
-    \           'write_mbps_max': write_mbps_max,\n            'snapshots': snapshots_str,\n
-    \           'start_time': start_time.isoformat(),\n            'end_time': end_time.isoformat()
-    \ \n        }\n        all_metrics.append(metrics_entry)\n\n        log.info(f\"Metrics
-    for PV {pv['name']} - Volume ID: {volume_id}, Read I/O Avg: {read_io_avg}, Read
-    I/O Max: {read_io_max}, \"\n                 f\"Write I/O Avg: {write_io_avg},
-    Write I/O Max: {write_io_max}, \"\n                 f\"Read MB Avg: {read_mbps_avg}
-    MB/s, Read MB Max: {read_mbps_max} MB/s, \"\n                 f\"Write MB Avg:
-    {write_mbps_avg} MB/s, Write MB Max: {write_mbps_max} MB/s, \"\n                 f\"Snapshots:
+    \           'ebs_size_gb': aws_api_data['ebs_size_gb'],\n            'ebs_available_gb':
+    pv['available_gb'],\n            'ebs_provisioned_iops': aws_api_data['ebs_provisioned_iops'],\n
+    \           'ebs_provisioned_throughput': aws_api_data['ebs_provisioned_throughput'],\n
+    \           'read_io_avg': read_io_avg,\n            'read_io_max': read_io_max,\n
+    \           'write_io_avg': write_io_avg,\n            'write_io_max': write_io_max,\n
+    \           'read_mbps_avg': read_mbps_avg,\n            'read_mbps_max': read_mbps_max,\n
+    \           'write_mbps_avg': write_mbps_avg,\n            'write_mbps_max': write_mbps_max,\n
+    \           'snapshots': snapshots_str,\n            'start_time': start_time.isoformat(),\n
+    \           'end_time': end_time.isoformat()  \n        }\n        all_metrics.append(metrics_entry)\n\n
+    \       log.info(f\"Metrics for PV {pv['name']} - Volume ID: {volume_id}, Read
+    I/O Avg: {read_io_avg}, Read I/O Max: {read_io_max}, \"\n                 f\"Write
+    I/O Avg: {write_io_avg}, Write I/O Max: {write_io_max}, \"\n                 f\"Read
+    MB Avg: {read_mbps_avg} MB/s, Read MB Max: {read_mbps_max} MB/s, \"\n                 f\"Write
+    MB Avg: {write_mbps_avg} MB/s, Write MB Max: {write_mbps_max} MB/s, \"\n                 f\"Snapshots:
     {snapshots_str}, Start Time: {start_time.isoformat()}, End Time: {end_time.isoformat()}\")\n\n
     \       upload_raw_response_to_s3(metric_data, volume_id)\n\n    return all_metrics\n\ndef
     get_volume_metrics(volume_id, start_time, end_time, period):\n    response = cloudwatch.get_metric_data(\n
@@ -117,26 +117,47 @@ data:
     'w', newline='') as csvfile:\n        writer = csv.DictWriter(csvfile, fieldnames=metric_data[0].keys())\n
     \       writer.writeheader()\n        writer.writerows(metric_data)\n\n    log.info(f\"Metrics
     written to temporary file {temp_file}\")\n\n    upload_to_s3(temp_file, bucket_name,
-    'datafile.csv')\n\n    os.remove(temp_file)\n    \n    \n\n\ndef upload_to_s3(file_name,
-    bucket, object_name=None):\n    if object_name is None:\n        object_name =
-    file_name\n\n    try:\n        s3_client.upload_file(file_name, bucket, object_name)\n
-    \       log.info(f\"Uploaded {file_name} to S3 bucket {bucket}/{object_name}\")\n
-    \   except Exception as e:\n        log.error(f\"Failed to upload {file_name}
-    to S3: {e}\")\n\ndef main():\n    parser = argparse.ArgumentParser(description=\"Collect
-    pv iostats data.\")\n    \n    time_duration = os.getenv(\"TIME_DURATION\")\n
-    \   \n    if not time_duration:\n        log.error(\"TIME_DURATION environment
-    variable is not set.\")\n        return\n\n    try:\n        time_duration = int(time_duration)\n
-    \   except ValueError:\n        log.error(\"Invalid TIME_DURATION environment
-    variable. Must be an integer.\")\n        return\n\n    bucket_name = os.getenv(\"S3_BUCKET_NAME\")\n
-    \   if not bucket_name:\n        log.error(\"S3_BUCKET_NAME environment variable
-    is not set.\")\n        return\n\n    log.info(f\"Using S3 bucket: {bucket_name}\")\n\n
-    \   end_time = datetime.now(timezone.utc)\n    start_time = end_time - timedelta(days=time_duration)\n\n
+    'datafile.csv')\n\n    os.remove(temp_file)\n    \ndef get_pv_available_space():\n
+    \   \"\"\"Fetch available space for each PV using kubelet metrics, and convert
+    to GB.\"\"\"\n    log.info(\"Fetching available space for Persistent Volumes\")\n
+    \   global pv_info\n\n    # Ensure pv_info is populated with PV data\n    if not
+    pv_info:\n        log.warning(\"No PV information available.\")\n        return\n\n
+    \   # Query kubelet metrics for each PV\n    try:\n        for pv in pv_info:\n
+    \           claim_name = pv.get(\"claim_name\")\n            namespace = pv.get(\"namespace\")\n
+    \           log.debug(f\"Fetching PVC status for claim: {claim_name} in namespace:
+    {namespace}\")\n\n            # Fetch PVC status from the Kubernetes API\n            response
+    = v1.read_namespaced_persistent_volume_claim_status(claim_name, namespace)\n\n
+    \           # Ensure 'capacity' and 'storage' fields are available\n            if
+    response.status.capacity and \"storage\" in response.status.capacity:\n                storage_capacity
+    = response.status.capacity[\"storage\"]\n                \n                # Convert
+    storage from bytes to GB (1 GB = 1024^3 bytes)\n                available_bytes
+    = int(storage_capacity.replace(\"Gi\", \"\")) * 1024 ** 3  # In case it's returned
+    in Gi\n                available_gb = available_bytes / (1024 ** 3)  # Convert
+    bytes to GB\n\n                pv[\"available_gb\"] = available_gb\n                log.info(f\"PVC
+    {claim_name} in namespace {namespace} has {available_gb} GB available.\")\n            else:\n
+    \               log.warning(f\"Storage capacity not found for PVC {claim_name}.
+    Skipping.\")\n\n    except Exception as e:\n        log.error(f\"Error fetching
+    available space for PVs: {e}\")\n\n   \n\n\n\ndef upload_to_s3(file_name, bucket,
+    object_name=None):\n    if object_name is None:\n        object_name = file_name\n\n
+    \   try:\n        s3_client.upload_file(file_name, bucket, object_name)\n        log.info(f\"Uploaded
+    {file_name} to S3 bucket {bucket}/{object_name}\")\n    except Exception as e:\n
+    \       log.error(f\"Failed to upload {file_name} to S3: {e}\")\n\ndef main():\n
+    \   parser = argparse.ArgumentParser(description=\"Collect pv iostats data.\")\n
+    \   \n    time_duration = os.getenv(\"TIME_DURATION\")\n    \n    if not time_duration:\n
+    \       log.error(\"TIME_DURATION environment variable is not set.\")\n        return\n\n
+    \   try:\n        time_duration = int(time_duration)\n    except ValueError:\n
+    \       log.error(\"Invalid TIME_DURATION environment variable. Must be an integer.\")\n
+    \       return\n\n    bucket_name = os.getenv(\"S3_BUCKET_NAME\")\n    if not
+    bucket_name:\n        log.error(\"S3_BUCKET_NAME environment variable is not set.\")\n
+    \       return\n\n    log.info(f\"Using S3 bucket: {bucket_name}\")\n\n    end_time
+    = datetime.now(timezone.utc)\n    start_time = end_time - timedelta(days=time_duration)\n\n
     \   log.info(f\"Script started with arguments - Time: {time_duration}s, Bucket:
     {bucket_name}, Start Time: {start_time.isoformat()}, End Time: {end_time.isoformat()}\")\n\n
-    \   get_persistent_volumes()\n\n    if not pv_info:\n        log.error(\"No PV
-    information available. Exiting.\")\n        return\n\n    metrics_data = get_ebs_metrics(start_time,
-    end_time)\n    write_metrics_to_s3(metrics_data, bucket_name)\n\n    log.info(\"Script
-    execution completed.\")\n\nif __name__ == \"__main__\":\n    main()\n"
+    \   get_persistent_volumes()\n    \n\n    if not pv_info:\n        log.error(\"No
+    PV information available. Exiting.\")\n        return\n    get_pv_available_space()\n\n
+    \   metrics_data = get_ebs_metrics(start_time, end_time)\n    write_metrics_to_s3(metrics_data,
+    bucket_name)\n\n    log.info(\"Script execution completed.\")\n\nif __name__ ==
+    \"__main__\":\n    main()\n"
 kind: ConfigMap
 metadata:
   creationTimestamp: null

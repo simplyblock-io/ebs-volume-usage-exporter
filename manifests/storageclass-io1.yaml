@@ -1,0 +1,10 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: io1-storage-class
+provisioner: ebs.csi.aws.com
+parameters:
+  type: io1
+  fsType: ext4
+  iopsPerGb: "50"  # Optionally specify IOPS per GB
+reclaimPolicy: Retain

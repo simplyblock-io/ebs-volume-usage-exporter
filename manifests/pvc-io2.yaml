@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-io2
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: io2-storage-class
+  resources:
+    requests:
+      storage: 10Gi
