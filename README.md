@@ -1,7 +1,13 @@
 # pv-metrics-aggregation
 script used to fetch persistent volume info and iostats
 
-1) Get AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY with IAM EC2 and Cloudwatch Read-Only permission,use them to create a k8s secret:
+pre-requisites:
+  - A kubernetes cluster with cluster admin privilege
+  - An s3 bucket
+
+
+
+1) Get AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY with IAM EC2 and Cloudwatch Read-Only permission, s3 bucket full permissions,use them to create a k8s secret:
 `kubectl create secret generic aws-secret \
   --from-literal=AWS_ACCESS_KEY_ID=your-access-key-id \
   --from-literal=AWS_SECRET_ACCESS_KEY=your-secret-access-key`
@@ -18,6 +24,6 @@ script used to fetch persistent volume info and iostats
 `kubectl apply -f manifests/storage-cluster-role-binding.yaml`
 
 5) deploy helm chart with:
-    `helm install metric-agg charts/pv-metrics-aggregation/ --set scriptConfig.S3_BUCKET_NAME=metrics-aggragation --set scriptConfig.AWS_REGION=us-east-1 --set scriptConfig.TIME_DURATION=1`
+    `helm install metric-agg charts/pv-metrics-aggregation/ --set scriptConfig.S3_BUCKET_NAME=metrics-aggragation --set scriptConfig.AWS_REGION=us-east-1 --set scriptConfig.TIME_DURATION=1 --set scriptConfig.CLUSTER_NAME=random`
 
 TIME_DURATION is number of days in the past from now.

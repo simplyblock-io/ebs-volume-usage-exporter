@@ -4,6 +4,7 @@
 
 
 scriptConfig:
+  CLUSTER_NAME: random
   AWS_SECRET_REF: aws-secret
   AWS_REGION: us-east-2
   S3_BUCKET_NAME: metrics-aggregation

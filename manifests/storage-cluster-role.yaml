@@ -3,6 +3,14 @@ kind: ClusterRole
 metadata:
   name: storage-cluster-role
 rules:
+- nonResourceURLs:
+    - "/metrics"
+  verbs:
+    - get
+- apiGroups: [""]
+  resources: ["nodes", "nodes/metrics"]
+  verbs: ["get","list","status"]
+
 - apiGroups: [""]
   resources: ["persistentvolumes", "persistentvolumeclaims","persistentvolumeclaims/status"]
   verbs: ["get", "list","status"]
