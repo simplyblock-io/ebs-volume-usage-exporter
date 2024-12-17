@@ -1,5 +1,7 @@
-# pv-metrics-aggregation
-script used to fetch persistent volume info and iostats
+# ebs-volume-usage-exporter
+script used to fetch EBS persistent volume info and iostats from Amazon EKS clusters
+
+On average, 70% of cloud block storage such as EBS is under-utilized. That typically means that many of storage consumers (e.g. databases) request more storage that they need, creating overall storage waste. Simplyblock’s EBS Volume Usage Calculator helps you understand the usage of persistent storage inside an Amazon EKS cluster and identify opportunities for EBS cost optimization. This isn’t always easy since most volumes are dynamically provisioned, so there is no general overview of how much storage is being actually used.
 
 pre-requisites:
   - A kubernetes cluster with cluster admin privilege
