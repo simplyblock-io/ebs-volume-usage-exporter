@@ -78,3 +78,6 @@ helm install metric-agg charts/pv-metrics-aggregation/ \
   --set scriptConfig.TIME_DURATION=1 \
   --set scriptConfig.CLUSTER_NAME=random
 ```
+
+If you want, you can now upload your exported CSV file to our [EBS Volume Usage Calculator](https://www.simplyblock.io/ebs-volume-usage-calculator/) for automatic analysis and calculation of your overprovisioning. The calculator runs completely local (in your browser) and does not upload information to our servers.
+
