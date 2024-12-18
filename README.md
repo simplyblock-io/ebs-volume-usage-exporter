@@ -1,19 +1,21 @@
 # ebs-volume-usage-exporter
-On average, 70% of cloud block storage such as EBS is under-utilized. That typically means that many of storage consumers (e.g. databases) request more storage that they need, creating overall storage waste. Simplyblock’s EBS Volume Usage Calculator helps you understand the usage of persistent storage inside an Amazon EKS cluster and identify opportunities for EBS cost optimization. This isn’t always easy since most volumes are dynamically provisioned, so there is no general overview of how much storage is being actually used.
+On average, 70% of cloud block storage, such as EBS, is under-utilized. That typically means that many storage consumers (e.g., databases) request more storage than they need, creating overall storage waste. Simplyblock’s EBS Volume Usage Calculator helps you understand the usage of persistent storage inside an Amazon EKS cluster and identify opportunities for EBS cost optimization. This isn’t always easy since most volumes are dynamically provisioned, so there is no general overview of how much storage is being actually used.
+
+The exported CSV can be analyzed manually or automatically using our [EBS Volume Usage Calculator](https://www.simplyblock.io/ebs-volume-usage-calculator/). The calculator runs completely local (in your browser) and does not upload information to our servers.
 
 ## What is collected?
 
 The ebs-volume-usage-exporter collects some basic volume data (e.g., aws region, provisioned capacity, IOPS, throughput, name, ...), as well as usage information (avg / max IOPS and throughput).
 
-The following list has all exported CSV colums and their meaning:
-- **aws_region:** The volume's AWS region (for multi region clusters)
+The following list has all exported CSV columns and their meaning:
+- **aws_region:** The volume's AWS region (for multi-region clusters)
 - **pv_name:** The volume's UUID-based volume name
-- **pv_size:** The volume's human readable provisioned capacity
+- **pv_size:** The volume's human-readable provisioned capacity
 - **ebs_volume_id:** The volume's Amazon EBS volume id
 - **ebs_volume_type:** The volume's Amazon EBS volume type (one of sc1, st1, gp2, gp3, io1, io2)
 - **ebs_size_gb:** The volume's provisioned capacity (as integer)
-- **ebs_provisioned_iops:** The volume's provisioned IOPS (may be N/A in case of default)
-- **ebs_provisioned_throughput:** The volume's provisioned throughput (may be N/A in case of default)
+- **ebs_provisioned_iops:** The volume's provisioned IOPS (can be "N/A" in case of default)
+- **ebs_provisioned_throughput:** The volume's provisioned throughput (can be "N/A" in case of default)
 - **read_io_avg:** The volume's average read IOPS
 - **read_io_max:** The volume's maximum read IOPS
 - **write_io_avg:** The volume's average write IOPS
@@ -38,9 +40,9 @@ us-east-2,pvc-5a6f744a-2bb0-4b89-889f-bb66bcbd1f63,150Gi,vol-0e41cb8b3856d5d12,s
 
 The collector is provided as a ready-to-use helm chart which uses the default python image to execute the collector script.
 
-To deploy the helm chart, a few values need to be configured in the `values.yaml` file. Therefore, the following information need to be available:
+To deploy the helm chart, a few values need to be configured in the `values.yaml` file. Therefore, the following information needs to be available:
 
-  - Amazon EKS cluster with cluster admin privilege
+  - Amazon EKS cluster with cluster-admin privilege
   - S3 bucket
 
 First, we need to create the necessary secret. To create it you need a `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. The following permissions are required:
@@ -59,7 +61,7 @@ kubectl create secret generic aws-secret \
 
 Afterward, fill in the name of the secret (in this case `aws-secret`) into the `values.yaml` under `AWS_SECRET_REF`.
 
-Secondly, we need to create a service account, and cluster role (get and list PVs, PVCs, and snapshot). You can do this with the following commands:
+Secondly, we need to create a service account and cluster role (get and list PVs, PVCs, and snapshots). You can do this with the following commands:
 
 ```bash
 kubectl create sa metric-aggregation-sa
@@ -67,7 +69,7 @@ kubectl apply -f manifests/storage-cluster-role.yaml
 kubectl apply -f manifests/storage-cluster-role-binding.yaml
 ```
 
-Finally, install he helm chart and let the tool run. After the successful export, you'll find the exported CSV file in your provided S3 bucket. To kick of the installation, use the following command. The `TIME_DURATION` parameter defines the number of days for the data collection.
+Finally, install the helm chart and let the tool run. After the successful export, you'll find the exported CSV file in the S3 bucket you provided. To kick off the installation, use the following command. The `TIME_DURATION` parameter defines the number of days for the data collection.
 
 ```bash
 helm install metric-agg charts/pv-metrics-aggregation/ \
